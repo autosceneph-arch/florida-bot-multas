@@ -40,7 +40,7 @@ def tiene_permiso(interaction, nivel):
     if nivel == "policia" and rp and any(r.id == rp for r in member.roles): return True
     return False
 
-# ==================== COMANDO CREAR MULTA (ACTUALIZADO) ====================
+# ==================== COMANDO CREAR MULTA ====================
 
 @tree.command(name="multa_crear", description="Crear una multa oficial")
 @app_commands.describe(
@@ -62,7 +62,7 @@ async def multa_crear(
     valor: int
 ):
     if not tiene_permiso(interaction, "policia"):
-        return await interaction.response.send_message("❌ Solo policias y miembros del staff pueden crear multas.", ephemeral=True)
+        return await interaction.response.send_message("❌ No tienes permiso para crear multas.", ephemeral=True)
 
     await interaction.response.defer()
 
@@ -82,18 +82,17 @@ async def multa_crear(
     embed.add_field(name="👮 QUIEN LA PONE", value=f"**Oficial responsable:** {interaction.user.mention}\n**ID del oficial:** `{interaction.user.id}`", inline=False)
     embed.add_field(name="🔴 TIPO DE MULTA", value=tipo.value, inline=True)
     embed.add_field(name="📋 DETALLES DE LA MULTA", value=f"**Monto total:** $ {valor:,}\n**Motivo:** {motivo}\n**ID de multa:** {id_multa}", inline=False)
-
+    
     embed.add_field(name="⏰ INFORMACIÓN IMPORTANTE", 
                     value="El ciudadano dispone de un plazo máximo de **3 días** para pagar la multa.\n"
                           "Si no realiza el pago, recibirá advertencias y luego será sancionado.", inline=False)
 
-    # Nueva sección de pago
     embed.add_field(name="💰 CÓMO PAGAR UNA MULTA", 
                     value="Dirígete al canal de **Economía** y usa el comando:\n"
                           "`!pay @banco_flrp <cantidad>`\n\n"
                           "Después de pagar, **menciona al oficial** para que retire la multa.\n"
                           "Se recomienda avisarle **una vez por día**. Si no la retira en 2 días, contacta a soporte abriendo un ticket.", inline=False)
-
+    
     embed.set_footer(text="FLRP • Sistema oficial de sanciones")
     embed.timestamp = now
 
@@ -102,6 +101,22 @@ async def multa_crear(
         await miembro.send(embed=embed)
     except:
         pass
+
+# ==================== COMANDO ELIMINAR ====================
+
+@tree.command(name="multa_eliminar", description="Eliminar una multa (Solo Staff)")
+@app_commands.describe(id_multa="ID de la multa a eliminar")
+async def multa_eliminar(interaction: discord.Interaction, id_multa: str):
+    if not tiene_permiso(interaction, "staff"):
+        return await interaction.response.send_message("❌ Solo el Staff puede eliminar multas.", ephemeral=True)
+
+    c.execute("DELETE FROM multas WHERE id_multa=?", (id_multa,))
+    if c.rowcount > 0:
+        conn.commit()
+        embed = discord.Embed(title="✅ Multa Eliminada", description=f"La multa **{id_multa}** ha sido eliminada correctamente.", color=0x00FF00)
+        await interaction.response.send_message(embed=embed)
+    else:
+        await interaction.response.send_message(f"❌ No se encontró la multa con ID `{id_multa}`.", ephemeral=True)
 
 # ==================== COMANDO PAGAR ====================
 
@@ -128,26 +143,12 @@ async def multa_pagar(interaction: discord.Interaction, id_multa: str):
     embed.add_field(name="Ciudadano", value=multa[0], inline=True)
     embed.add_field(name="Monto Pagado", value=f"$ {multa[1]:,}", inline=True)
     embed.add_field(name="Estado", value="**Al día con FLRP** ✅", inline=False)
-    embed.set_footer(text="FLRP • Sistema oficial de multas")
+    embed.set_footer(text="FLRP • Sistema oficial de sanciones")
     embed.timestamp = datetime.now()
 
     await interaction.response.send_message(embed=embed)
 
-# ==================== COMANDOS ANTERIORES (sin cambios) ====================
-
-@tree.command(name="multa_eliminar", description="Eliminar una multa (Solo Staff)")
-@app_commands.describe(id_multa="ID de la multa a eliminar")
-async def multa_eliminar(interaction: discord.Interaction, id_multa: str):
-    if not tiene_permiso(interaction, "staff"):
-        return await interaction.response.send_message("❌ Solo el Staff puede eliminar multas.", ephemeral=True)
-
-    c.execute("DELETE FROM multas WHERE id_multa=?", (id_multa,))
-    if c.rowcount > 0:
-        conn.commit()
-        embed = discord.Embed(title="✅ Multa Eliminada", description=f"La multa **{id_multa}** ha sido eliminada correctamente.", color=0x00FF00)
-        await interaction.response.send_message(embed=embed)
-    else:
-        await interaction.response.send_message(f"❌ No se encontró la multa con ID revise que haya colocado el signo # junto con el ID `{id_multa}`.", ephemeral=True)
+# ==================== COMANDO LISTA ====================
 
 @tree.command(name="multa_lista", description="Ver multas pendientes de un usuario")
 @app_commands.describe(miembro="Usuario a consultar (solo policías/staff)")
@@ -171,6 +172,71 @@ async def multa_lista(interaction: discord.Interaction, miembro: discord.Member 
             inline=False
         )
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# ==================== COMANDO BASE DE DATOS ====================
+
+@tree.command(name="base_de_datos", description="Ver resumen de multas (Solo Staff)")
+async def base_de_datos(interaction: discord.Interaction):
+    if not tiene_permiso(interaction, "staff"):
+        return await interaction.response.send_message("❌ Solo Staff puede usar este comando.", ephemeral=True)
+
+    c.execute("""
+        SELECT miembro_nombre, miembro_id, COUNT(*) as cantidad 
+        FROM multas 
+        WHERE pagada = 0 
+        GROUP BY miembro_id 
+        ORDER BY cantidad DESC
+    """)
+    resultados = c.fetchall()
+
+    if not resultados:
+        return await interaction.response.send_message("✅ No hay multas pendientes en el servidor.", ephemeral=True)
+
+    per_page = 10
+    pages = [resultados[i:i + per_page] for i in range(0, len(resultados), per_page)]
+
+    class Paginator(discord.ui.View):
+        def __init__(self, pages):
+            super().__init__(timeout=180)
+            self.pages = pages
+            self.current_page = 0
+
+        @discord.ui.button(label="◀️", style=discord.ButtonStyle.gray)
+        async def prev(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if self.current_page > 0:
+                self.current_page -= 1
+                await self.update_message(interaction)
+
+        @discord.ui.button(label="▶️", style=discord.ButtonStyle.gray)
+        async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if self.current_page < len(self.pages) - 1:
+                self.current_page += 1
+                await self.update_message(interaction)
+
+        async def update_message(self, interaction: discord.Interaction):
+            embed = self.create_embed()
+            await interaction.response.edit_message(embed=embed, view=self)
+
+        def create_embed(self):
+            embed = discord.Embed(
+                title="📊 Base de Datos de Multas",
+                description=f"Página {self.current_page + 1} de {len(self.pages)}",
+                color=0xFF69B4
+            )
+            embed.set_footer(text="Solo usuarios con multas pendientes | Ordenado de mayor a menor")
+
+            for nombre, mid, cantidad in self.pages[self.current_page]:
+                embed.add_field(
+                    name=f"{nombre}",
+                    value=f"**{cantidad} multas pendientes**",
+                    inline=False
+                )
+            return embed
+
+    view = Paginator(pages)
+    await interaction.response.send_message(embed=view.create_embed(), view=view)
+
+# ==================== CONFIGURAR ROLES ====================
 
 @tree.command(name="multa_configurar_roles", description="Configurar roles")
 @app_commands.describe(rol_policia="Rol Policía", rol_staff="Rol Staff", rol_sancion="Rol Sanción")
