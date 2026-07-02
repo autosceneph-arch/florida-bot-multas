@@ -62,7 +62,7 @@ async def multa_crear(
     valor: int
 ):
     if not tiene_permiso(interaction, "policia"):
-        return await interaction.response.send_message("❌ No tienes permiso para crear multas.", ephemeral=True)
+        return await interaction.response.send_message("❌ Solo policias y miembros del staff pueden crear multas.", ephemeral=True)
 
     await interaction.response.defer()
 
@@ -82,7 +82,7 @@ async def multa_crear(
     embed.add_field(name="👮 QUIEN LA PONE", value=f"**Oficial responsable:** {interaction.user.mention}\n**ID del oficial:** `{interaction.user.id}`", inline=False)
     embed.add_field(name="🔴 TIPO DE MULTA", value=tipo.value, inline=True)
     embed.add_field(name="📋 DETALLES DE LA MULTA", value=f"**Monto total:** $ {valor:,}\n**Motivo:** {motivo}\n**ID de multa:** {id_multa}", inline=False)
-    
+
     embed.add_field(name="⏰ INFORMACIÓN IMPORTANTE", 
                     value="El ciudadano dispone de un plazo máximo de **3 días** para pagar la multa.\n"
                           "Si no realiza el pago, recibirá advertencias y luego será sancionado.", inline=False)
@@ -93,7 +93,7 @@ async def multa_crear(
                           "`!pay @banco_flrp <cantidad>`\n\n"
                           "Después de pagar, **menciona al oficial** para que retire la multa.\n"
                           "Se recomienda avisarle **una vez por día**. Si no la retira en 2 días, contacta a soporte abriendo un ticket.", inline=False)
-    
+
     embed.set_footer(text="FLRP • Sistema oficial de sanciones")
     embed.timestamp = now
 
@@ -128,7 +128,7 @@ async def multa_pagar(interaction: discord.Interaction, id_multa: str):
     embed.add_field(name="Ciudadano", value=multa[0], inline=True)
     embed.add_field(name="Monto Pagado", value=f"$ {multa[1]:,}", inline=True)
     embed.add_field(name="Estado", value="**Al día con FLRP** ✅", inline=False)
-    embed.set_footer(text="FLRP • Sistema oficial de sanciones")
+    embed.set_footer(text="FLRP • Sistema oficial de multas")
     embed.timestamp = datetime.now()
 
     await interaction.response.send_message(embed=embed)
@@ -147,7 +147,7 @@ async def multa_eliminar(interaction: discord.Interaction, id_multa: str):
         embed = discord.Embed(title="✅ Multa Eliminada", description=f"La multa **{id_multa}** ha sido eliminada correctamente.", color=0x00FF00)
         await interaction.response.send_message(embed=embed)
     else:
-        await interaction.response.send_message(f"❌ No se encontró la multa con ID `{id_multa}`.", ephemeral=True)
+        await interaction.response.send_message(f"❌ No se encontró la multa con ID revise que haya colocado el signo # junto con el ID `{id_multa}`.", ephemeral=True)
 
 @tree.command(name="multa_lista", description="Ver multas pendientes de un usuario")
 @app_commands.describe(miembro="Usuario a consultar (solo policías/staff)")
